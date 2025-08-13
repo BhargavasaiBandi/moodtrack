@@ -48,24 +48,25 @@ const MoodMapContent = () => {
     return null;
   };
 
+  // Check if wallet is properly connected and ready
+  const isWalletReady = () => {
+    return connected && account && signAndSubmitTransaction && typeof signAndSubmitTransaction === 'function';
+  };
+
   // Fetch global mood data
   const fetchMoodData = async () => {
     setLoading(true);
     try {
       let moodCounts = await aptos.view({
-        
-          function: `${MODULE_ADDRESS}::moodmap::get_mood_counts`,
-          type_arguments: [],
-          arguments: []
-        
+        function: `${MODULE_ADDRESS}::moodmap::get_mood_counts`,
+        type_arguments: [],
+        arguments: []
       });
-
+      
       let total = await aptos.view({
-        payload: {
-          function: `${MODULE_ADDRESS}::moodmap::get_total_entries`,
-          type_arguments: [],
-          arguments: []
-        }
+        function: `${MODULE_ADDRESS}::moodmap::get_total_entries`,
+        type_arguments: [],
+        arguments: []
       });
 
       setTotalEntries(parseInt(total[0]));
@@ -77,7 +78,7 @@ const MoodMapContent = () => {
       })).filter(item => item.value > 0);
       setMoodData(chartData);
 
-      if (connected && account) await fetchUserMood();
+      if (isWalletReady()) await fetchUserMood();
 
     } catch (err) {
       console.error("Error fetching mood data:", err);
@@ -90,17 +91,16 @@ const MoodMapContent = () => {
 
   // Fetch the connected user's mood
   const fetchUserMood = async () => {
-    if (!connected || !account) return;
+    if (!isWalletReady()) return;
+    
     try {
       const userAddress = getAccountAddress();
       if (!userAddress) return;
 
       const userMoodData = await aptos.view({
-        payload: {
-          function: `${MODULE_ADDRESS}::moodmap::get_user_mood`,
-          type_arguments: [],
-          arguments: [userAddress]
-        }
+        function: `${MODULE_ADDRESS}::moodmap::get_user_mood`,
+        type_arguments: [],
+        arguments: [userAddress]
       });
 
       if (userMoodData && userMoodData[0] !== undefined) {
@@ -122,13 +122,16 @@ const MoodMapContent = () => {
       message.warning('Please connect your wallet first!');
       return;
     }
-    if (!signAndSubmitTransaction || typeof signAndSubmitTransaction !== 'function') {
-      message.error('Wallet does not support transaction signing');
+    
+    if (!isWalletReady()) {
+      message.error('Wallet not ready yet. Please reconnect your wallet.');
       return;
     }
+
     try {
       setLoading(true);
       message.info('Initializing contract...');
+      
       const payload = {
         type: "entry_function_payload",
         function: `${MODULE_ADDRESS}::moodmap::initialize`,
@@ -173,14 +176,19 @@ const MoodMapContent = () => {
       message.warning('Please enter a message about your mood!');
       return;
     }
-    if (!connected || !signAndSubmitTransaction) {
-      message.error('Wallet not connected or cannot sign transactions');
+    
+    if (!isWalletReady()) {
+      message.error('Wallet not connected properly. Please reconnect your wallet.');
       return;
     }
+
     try {
       setLoading(true);
       const userAddress = getAccountAddress();
-      if (!userAddress) return;
+      if (!userAddress) {
+        message.error('Unable to get wallet address');
+        return;
+      }
 
       const messageBytes = Array.from(new TextEncoder().encode(moodMessage));
       const payload = {
@@ -238,7 +246,9 @@ const MoodMapContent = () => {
           <Title level={2} style={{ color: 'white', margin: 0 }}>🗺️ MoodMap</Title>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {connected && totalEntries === 0 && (
-              <Button type="primary" onClick={initializeContract} loading={loading} size="small">Initialize Contract</Button>
+              <Button type="primary" onClick={initializeContract} loading={loading} size="small">
+                Initialize Contract
+              </Button>
             )}
             <WalletConnector />
           </div>
@@ -263,7 +273,9 @@ const MoodMapContent = () => {
                 <Title level={3}>Initialize MoodMap Contract</Title>
                 <Text>The contract needs to be initialized before you can start tracking moods.</Text>
                 <br /><br />
-                <Button type="primary" size="large" onClick={initializeContract} loading={loading}>Initialize Contract</Button>
+                <Button type="primary" size="large" onClick={initializeContract} loading={loading}>
+                  Initialize Contract
+                </Button>
               </Card>
             </Col>
           )}
@@ -290,23 +302,52 @@ const MoodMapContent = () => {
                     key={mood.value}
                     size="large"
                     type="default"
-                    disabled={!connected || totalEntries === 0}
+                    disabled={!isWalletReady() || totalEntries === 0}
                     onClick={() => setMood(mood.value)}
-                    style={{ height: '80px', width: '120px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '24px', borderColor: mood.color, borderWidth: '2px', opacity: (connected && totalEntries > 0) ? 1 : 0.5 }}
+                    style={{ 
+                      height: '80px', 
+                      width: '120px', 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      fontSize: '24px', 
+                      borderColor: mood.color, 
+                      borderWidth: '2px', 
+                      opacity: (isWalletReady() && totalEntries > 0) ? 1 : 0.5 
+                    }}
                   >
                     <div style={{ fontSize: '32px', marginBottom: '4px' }}>{mood.emoji}</div>
                     <div style={{ fontSize: '12px' }}>{mood.name}</div>
                   </Button>
                 ))}
               </div>
-              {!connected && <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>Connect wallet to share your mood</Text>}
-              {connected && totalEntries === 0 && <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>Initialize contract first to start tracking moods</Text>}
+              {!connected && (
+                <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>
+                  Connect wallet to share your mood
+                </Text>
+              )}
+              {connected && !isWalletReady() && (
+                <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>
+                  Wallet not ready - please reconnect
+                </Text>
+              )}
+              {connected && isWalletReady() && totalEntries === 0 && (
+                <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>
+                  Initialize contract first to start tracking moods
+                </Text>
+              )}
             </Card>
           </Col>
 
           <Col span={24}>
             <Card style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '16px', border: 'none' }}>
-              <Statistic title="Total Mood Entries" value={totalEntries} prefix={<SmileOutlined />} valueStyle={{ color: '#1890ff', fontSize: '32px' }} />
+              <Statistic 
+                title="Total Mood Entries" 
+                value={totalEntries} 
+                prefix={<SmileOutlined />} 
+                valueStyle={{ color: '#1890ff', fontSize: '32px' }} 
+              />
             </Card>
           </Col>
 
@@ -316,8 +357,18 @@ const MoodMapContent = () => {
                 <Card title="Mood Distribution" style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '16px', border: 'none' }}>
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
-                      <Pie data={moodData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value, emoji }) => `${emoji} ${value}`}>
-                        {moodData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                      <Pie 
+                        data={moodData} 
+                        dataKey="value" 
+                        nameKey="name" 
+                        cx="50%" 
+                        cy="50%" 
+                        outerRadius={80} 
+                        label={({ name, value, emoji }) => `${emoji} ${value}`}
+                      >
+                        {moodData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
                       </Pie>
                       <Tooltip content={<CustomTooltip />} />
                     </PieChart>
@@ -334,7 +385,9 @@ const MoodMapContent = () => {
                       <YAxis />
                       <Tooltip content={<CustomTooltip />} />
                       <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                        {moodData.map((entry, index) => <Cell key={`bar-${index}`} fill={entry.color} />)}
+                        {moodData.map((entry, index) => (
+                          <Cell key={`bar-${index}`} fill={entry.color} />
+                        ))}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -345,7 +398,14 @@ const MoodMapContent = () => {
 
           {moodData.length === 0 && !loading && totalEntries === 0 && connected && (
             <Col span={24}>
-              <Card style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '16px', border: 'none', textAlign: 'center', padding: '40px' }}>
+              <Card style={{ 
+                background: 'rgba(255,255,255,0.9)', 
+                backdropFilter: 'blur(10px)', 
+                borderRadius: '16px', 
+                border: 'none', 
+                textAlign: 'center', 
+                padding: '40px' 
+              }}>
                 <MehOutlined style={{ fontSize: '64px', color: '#ccc', marginBottom: '16px' }} />
                 <Title level={3} style={{ color: '#666' }}>No moods recorded yet</Title>
                 <Text style={{ color: '#999' }}>Initialize the contract and be the first to share your mood!</Text>
@@ -358,18 +418,32 @@ const MoodMapContent = () => {
           title={selectedMoodData ? `Share your ${selectedMoodData.name} mood` : "Share your mood"}
           open={showMoodModal}
           onOk={submitMood}
-          onCancel={() => { setShowMoodModal(false); setMoodMessage(''); setSelectedMoodData(null); }}
+          onCancel={() => { 
+            setShowMoodModal(false); 
+            setMoodMessage(''); 
+            setSelectedMoodData(null); 
+          }}
           confirmLoading={loading}
           okText="Share Mood"
         >
           {selectedMoodData && (
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <div style={{ fontSize: '48px', marginBottom: '8px' }}>{moodOptions[selectedMoodData.value]?.emoji}</div>
+              <div style={{ fontSize: '48px', marginBottom: '8px' }}>
+                {moodOptions[selectedMoodData.value]?.emoji}
+              </div>
               <Title level={4}>{selectedMoodData.name}</Title>
             </div>
           )}
-          <TextArea rows={4} placeholder="Tell us more about how you're feeling... (required)" value={moodMessage} onChange={(e) => setMoodMessage(e.target.value)} maxLength={200} />
-          <div style={{ marginTop: '8px', textAlign: 'right' }}><Text type="secondary">{moodMessage.length}/200</Text></div>
+          <TextArea 
+            rows={4} 
+            placeholder="Tell us more about how you're feeling... (required)" 
+            value={moodMessage} 
+            onChange={(e) => setMoodMessage(e.target.value)} 
+            maxLength={200} 
+          />
+          <div style={{ marginTop: '8px', textAlign: 'right' }}>
+            <Text type="secondary">{moodMessage.length}/200</Text>
+          </div>
         </Modal>
       </Content>
     </Layout>
