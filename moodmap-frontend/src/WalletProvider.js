@@ -10,18 +10,18 @@ const wallets = [];
 // Wallet Provider Component
 export const AppWalletProvider = ({ children }) => {
   const onError = (error) => {
-    console.error("Wallet error:", error);
-    // Safe error handling - check if error exists and has properties
-    if (error && typeof error === 'object') {
-      if ('message' in error && error.message) {
-        console.error("Error message:", error.message);
-      }
-    }
+    console.error("Wallet error details:", {
+      error: error,
+      message: error?.message,
+      code: error?.code,
+      type: typeof error,
+      keys: error ? Object.keys(error) : 'no keys'
+    });
   };
 
   return (
     <AptosWalletAdapterProvider 
-      plugins={wallets} 
+      plugins={wallets}
       autoConnect={true}
       onError={onError}
     >
@@ -33,37 +33,50 @@ export const AppWalletProvider = ({ children }) => {
 // Wallet Connector Component
 export const WalletConnector = () => {
   const { 
-    connect, 
-    disconnect, 
-    connected, 
+    connect,
+    disconnect,
+    connected,
     wallet,
     wallets: availableWallets
   } = useWallet();
 
   const handleConnect = async () => {
     try {
-      // Check if wallets are available
+      console.log('Available wallets:', availableWallets);
+      
       if (!availableWallets || availableWallets.length === 0) {
         console.error("No wallets available. Please install a wallet like Petra.");
         return;
       }
 
-      // Connect to first available wallet
       const firstWallet = availableWallets[0];
+      console.log('Connecting to wallet:', firstWallet);
+      
       if (firstWallet && firstWallet.name) {
         console.log("Connecting to:", firstWallet.name);
         await connect(firstWallet.name);
+        console.log("Connection successful");
       }
     } catch (error) {
-      console.error("Failed to connect wallet:", error);
+      console.error("Failed to connect wallet - detailed error:", {
+        error: error,
+        message: error?.message,
+        stack: error?.stack
+      });
     }
   };
 
   const handleDisconnect = async () => {
     try {
+      console.log("Disconnecting wallet...");
       await disconnect();
+      console.log("Disconnect successful");
     } catch (error) {
-      console.error("Failed to disconnect wallet:", error);
+      console.error("Failed to disconnect wallet - detailed error:", {
+        error: error,
+        message: error?.message,
+        stack: error?.stack
+      });
     }
   };
 
@@ -74,8 +87,8 @@ export const WalletConnector = () => {
           {wallet && wallet.name ? wallet.name : 'Wallet'} Connected
         </span>
         <Button 
-          type="primary" 
-          size="small" 
+          type="primary"
+          size="small"
           onClick={handleDisconnect}
         >
           Disconnect
@@ -86,7 +99,7 @@ export const WalletConnector = () => {
 
   return (
     <Button 
-      type="primary" 
+      type="primary"
       onClick={handleConnect}
     >
       Connect Wallet
