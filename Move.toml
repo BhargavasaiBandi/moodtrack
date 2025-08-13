@@ -1,0 +1,89 @@
+// src/WalletProvider.js
+import React from 'react';
+import {
+  AptosWalletAdapterProvider,
+  useWallet
+} from '@aptos-labs/wallet-adapter-react';
+import { WalletSelector } from '@aptos-labs/wallet-adapter-ant-design';
+import { Network } from '@aptos-labs/ts-sdk';
+
+// Import CSS for wallet selector
+import '@aptos-labs/wallet-adapter-ant-design/dist/index.css';
+
+export const AppWalletProvider = ({ children }) => {
+  return (
+    <AptosWalletAdapterProvider
+      plugins={[]} // Empty array - will detect installed wallets automatically
+      autoConnect={true}
+      dappConfig={{
+        network: Network.DEVNET,
+        name: "MoodMap",
+        description: "A mood tracking dapp on Aptos",
+      }}
+      onError={(error) => {
+        console.error('Wallet error:', error);
+      }}
+    >
+      {children}
+    </AptosWalletAdapterProvider>
+  );
+};
+
+export const WalletConnector = () => {
+  const { connected, account, disconnect } = useWallet();
+
+  // Debug: Log account structure when connected
+  if (connected && account) {
+    console.log('Account object:', account);
+    console.log('Account address:', account?.address);
+    console.log('Type of address:', typeof account?.address);
+  }
+
+  // Helper function to safely get address string
+  const getAddressString = (account) => {
+    if (!account) return null;
+    
+    // Handle different possible address formats
+    if (typeof account.address === 'string') {
+      return account.address;
+    } else if (account.address && typeof account.address.toString === 'function') {
+      return account.address.toString();
+    } else if (account.publicKey) {
+      return account.publicKey;
+    }
+    
+    return null;
+  };
+
+  const addressString = getAddressString(account);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      {!connected ? (
+        <WalletSelector />
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ color: 'white' }}>
+            {addressString ? 
+              `${addressString.slice(0, 6)}...${addressString.slice(-4)}` : 
+              'Connected'
+            }
+          </span>
+          <button 
+            onClick={disconnect}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.3)',
+              color: 'white',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              cursor: 'pointer'
+            }}
+          >
+            Disconnect
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
