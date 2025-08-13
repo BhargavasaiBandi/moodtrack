@@ -49,14 +49,26 @@ const MoodMapContent = () => {
   };
 
   // Check if wallet is properly connected and ready
-  const isWalletReady = () => {
-    return connected && account && signAndSubmitTransaction && typeof signAndSubmitTransaction === 'function';
-  };
-
-  // Fetch global mood data
-  const fetchMoodData = async () => {
-    setLoading(true);
+  // Replace isWalletReady function with:
+const isWalletReady = () => {
+  try {
+    return !!(connected && account && signAndSubmitTransaction && typeof signAndSubmitTransaction === 'function');
+  } catch (error) {
+    return false;
+  }
+};
+  // Replace the entire fetchMoodData function with:
+const fetchMoodData = async () => {
+  setLoading(true);
+  try {
+    // Check if contract exists first by trying to get resource
     try {
+      const resource = await aptos.getAccountResource({
+        accountAddress: MODULE_ADDRESS,
+        resourceType: `${MODULE_ADDRESS}::moodmap::MoodMap`
+      });
+      
+      // If resource exists, get the data
       let moodCounts = await aptos.view({
         function: `${MODULE_ADDRESS}::moodmap::get_mood_counts`,
         type_arguments: [],
@@ -72,7 +84,7 @@ const MoodMapContent = () => {
       setTotalEntries(parseInt(total[0]));
       const chartData = moodOptions.map((mood, i) => ({
         name: mood.name,
-        value: parseInt(moodCounts[0][i]),
+        value: parseInt(moodCounts[0][i] || 0),
         emoji: mood.emoji,
         color: mood.color
       })).filter(item => item.value > 0);
@@ -80,14 +92,21 @@ const MoodMapContent = () => {
 
       if (isWalletReady()) await fetchUserMood();
 
-    } catch (err) {
-      console.error("Error fetching mood data:", err);
+    } catch (resourceError) {
+      // Contract not initialized yet - this is normal
+      console.log("Contract not initialized yet");
       setTotalEntries(0);
       setMoodData([]);
-    } finally {
-      setLoading(false);
     }
-  };
+
+  } catch (err) {
+    console.error("Error fetching mood data:", err);
+    setTotalEntries(0);
+    setMoodData([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Fetch the connected user's mood
   const fetchUserMood = async () => {
@@ -117,48 +136,54 @@ const MoodMapContent = () => {
   };
 
   // Initialize the MoodMap contract
-  const initializeContract = async () => {
-    if (!connected) {
-      message.warning('Please connect your wallet first!');
-      return;
-    }
-    
-    if (!isWalletReady()) {
-      message.error('Wallet not ready yet. Please reconnect your wallet.');
-      return;
-    }
+  // Replace the beginning of initializeContract with:
+const initializeContract = async () => {
+  if (!connected) {
+    message.warning('Please connect your wallet first!');
+    return;
+  }
+  
+  // More robust wallet readiness check
+  if (!account || !signAndSubmitTransaction) {
+    message.error('Wallet not ready yet. Please reconnect your wallet.');
+    return;
+  }
 
-    try {
-      setLoading(true);
-      message.info('Initializing contract...');
-      
-      const payload = {
-        type: "entry_function_payload",
-        function: `${MODULE_ADDRESS}::moodmap::initialize`,
-        type_arguments: [],
-        arguments: []
-      };
+  // Rest of the function stays the same...
 
-      const response = await signAndSubmitTransaction(payload);
-      if (response && response.hash) {
-        await aptos.waitForTransaction({ transactionHash: response.hash });
-        message.success('Contract initialized successfully! 🎉');
-        setTimeout(fetchMoodData, 2000);
-      } else {
-        message.error('Transaction failed - no hash received');
-      }
-    } catch (error) {
-      console.error("Error initializing contract:", error);
-      if (error.message?.includes('RESOURCE_ALREADY_EXISTS')) {
-        message.info('Contract is already initialized!');
-        fetchMoodData();
-      } else {
-        message.error(`Failed to initialize contract: ${error.message || 'Unknown error'}`);
-      }
-    } finally {
-      setLoading(false);
+    // In initializeContract, replace the payload creation and transaction part with:
+try {
+  setLoading(true);
+  message.info('Initializing contract...');
+  
+  const transaction = {
+    data: {
+      function: `${MODULE_ADDRESS}::moodmap::initialize`,
+      typeArguments: [],
+      functionArguments: []
     }
   };
+
+  const response = await signAndSubmitTransaction(transaction);
+  
+  if (response && response.hash) {
+    await aptos.waitForTransaction({ transactionHash: response.hash });
+    message.success('Contract initialized successfully! 🎉');
+    setTimeout(fetchMoodData, 2000);
+  } else {
+    message.error('Transaction failed - no hash received');
+  }
+} catch (error) {
+  console.error("Error initializing contract:", error);
+  if (error.message?.includes('RESOURCE_ALREADY_EXISTS')) {
+    message.info('Contract is already initialized!');
+    fetchMoodData();
+  } else {
+    message.error(`Failed to initialize contract: ${error.message || 'Unknown error'}`);
+  }
+} finally {
+  setLoading(false);
+}}
 
   // Set mood modal
   const setMood = async (moodValue) => {
@@ -191,14 +216,15 @@ const MoodMapContent = () => {
       }
 
       const messageBytes = Array.from(new TextEncoder().encode(moodMessage));
-      const payload = {
-        type: "entry_function_payload",
-        function: `${MODULE_ADDRESS}::moodmap::set_mood`,
-        type_arguments: [],
-        arguments: [selectedMoodData.value, messageBytes]
-      };
+const transaction = {
+  data: {
+    function: `${MODULE_ADDRESS}::moodmap::set_mood`,
+    typeArguments: [],
+    functionArguments: [selectedMoodData.value, messageBytes]
+  }
+};
 
-      const response = await signAndSubmitTransaction(payload);
+const response = await signAndSubmitTransaction(transaction);
       if (response && response.hash) {
         await aptos.waitForTransaction({ transactionHash: response.hash });
         message.success(`Mood "${selectedMoodData.name}" set successfully! 🎉`);
