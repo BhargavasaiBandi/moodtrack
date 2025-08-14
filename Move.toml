@@ -4,9 +4,11 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-mood_addr="0x61f562562dd61e1f376c1d5670885f13d7166e84867f6be5b56ba82cb2f59cf3"
+mood_addr="0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9"
+
 [dev-addresses]
-mood_addr="0x61f562562dd61e1f376c1d5670885f13d7166e84867f6be5b56ba82cb2f59cf3"
+mood_addr="0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9"
+
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
 rev = "testnet"
