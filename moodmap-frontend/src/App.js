@@ -1,4 +1,4 @@
-// src/App.js - FIXED VERSION - Emojis Available After Wallet Connection
+// src/App.js - SIMPLIFIED VERSION - No Manual Initialization
 import React, { useState, useEffect } from 'react';
 import { Layout, Card, Button, message, Row, Col, Typography, Statistic, Input, Modal, Alert } from 'antd';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -29,15 +29,12 @@ const MoodMapContent = () => {
   const [moodData, setMoodData] = useState([]);
   const [totalEntries, setTotalEntries] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [selectedMood, setSelectedMood] = useState(null);
   const [userMood, setUserMood] = useState(null);
   const [moodMessage, setMoodMessage] = useState('');
   const [showMoodModal, setShowMoodModal] = useState(false);
   const [selectedMoodData, setSelectedMoodData] = useState(null);
   const [networkStatus, setNetworkStatus] = useState('checking');
   const [walletNetwork, setWalletNetwork] = useState('unknown');
-  const [contractInitialized, setContractInitialized] = useState(false);
-  const [debugInfo, setDebugInfo] = useState([]);
 
   const moodOptions = [
     { value: 0, name: 'Terrible', emoji: '😰', color: '#ff4d4f' },
@@ -47,31 +44,18 @@ const MoodMapContent = () => {
     { value: 4, name: 'Ecstatic', emoji: '🤩', color: '#1890ff' }
   ];
 
-  // ✅ DEBUG LOGGING FUNCTION
-  const addDebug = (message) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const debugMsg = `[${timestamp}] ${message}`;
-    setDebugInfo(prev => [...prev.slice(-10), debugMsg]); // Keep last 10 messages
-    console.log(`[MoodMap Debug] ${message}`);
-  };
-
   // ✅ DETECT WALLET NETWORK
   useEffect(() => {
     const detectWalletNetwork = async () => {
       if (connected && account) {
-        addDebug("🔍 Detecting wallet network...");
-        
         if (network) {
           const networkName = network.name || network.toString();
-          addDebug(`Detected wallet network: ${networkName}`);
           setWalletNetwork(networkName.toLowerCase());
           
           if (networkName.toLowerCase().includes('mainnet')) {
-            addDebug("❌ WALLET IS ON MAINNET!");
             message.error('🚨 Your wallet is connected to MAINNET! Please switch to TESTNET.');
             return;
           } else if (networkName.toLowerCase().includes('testnet')) {
-            addDebug("✅ WALLET IS ON TESTNET!");
             setWalletNetwork('testnet');
           }
         }
@@ -107,44 +91,23 @@ const MoodMapContent = () => {
     return true;
   };
 
-  // ✅ TESTNET VERIFICATION
+  // ✅ SIMPLIFIED TESTNET VERIFICATION
   useEffect(() => {
     const verifyTestnetConnection = async () => {
-      addDebug("🔍 Verifying testnet connection...");
-      
       try {
         const response = await fetch(`https://fullnode.testnet.aptoslabs.com/v1/accounts/${MODULE_ADDRESS}`);
-        const data = await response.json();
         
         if (response.ok) {
-          addDebug(`✅ CONTRACT FOUND ON TESTNET! Sequence: ${data.sequence_number}`);
-          
           const modulesResponse = await fetch(`https://fullnode.testnet.aptoslabs.com/v1/accounts/${MODULE_ADDRESS}/modules`);
           const modulesData = await modulesResponse.json();
           
           if (modulesData.some(m => m.abi?.name === 'moodmap')) {
-            addDebug("✅ MOODMAP MODULE VERIFIED ON TESTNET!");
             setNetworkStatus('testnet-verified');
-            
-            // ✅ More aggressive contract status checking  
-            setTimeout(() => {
-              addDebug("🔄 Initial contract status check after testnet verification...");
-              checkContractStatus();
-              
-              // Double-check after 3 seconds if still not detected
-              setTimeout(() => {
-                if (!contractInitialized) {
-                  addDebug("🔄 Secondary contract status check...");
-                  checkContractStatus();
-                }
-              }, 3000);
-            }, 1000);
           } else {
             setNetworkStatus('module-not-found');
           }
         }
       } catch (error) {
-        addDebug(`❌ Testnet verification failed: ${error.message}`);
         setNetworkStatus('testnet-error');
       }
     };
@@ -152,123 +115,105 @@ const MoodMapContent = () => {
     verifyTestnetConnection();
   }, []);
 
-  // ✅ IMPROVED CONTRACT STATUS DETECTION - Handle the actual state correctly
-  const checkContractStatus = async () => {
-    addDebug("🔄 Checking contract status...");
-    
-    try {
-      // Method 1: Direct API call to check if resource exists
-      const resourceResponse = await fetch(
-        `https://fullnode.testnet.aptoslabs.com/v1/accounts/${MODULE_ADDRESS}/resource/${MODULE_ADDRESS}::moodmap::MoodMap`
-      );
-      
-      if (resourceResponse.ok) {
-        const resourceData = await resourceResponse.json();
-        addDebug("✅ CONTRACT IS INITIALIZED (resource exists via API)!");
-        setContractInitialized(true);
-        message.success('✅ Contract is ready and initialized!');
-        setTimeout(fetchMoodData, 500);
-        return;
-      } else {
-        addDebug(`API response not OK: ${resourceResponse.status}`);
-      }
-      
-      // Method 2: Try using Aptos SDK
-      const resource = await aptos.getAccountResource({
-        accountAddress: MODULE_ADDRESS,
-        resourceType: `${MODULE_ADDRESS}::moodmap::MoodMap`
-      });
-      
-      addDebug("✅ CONTRACT IS INITIALIZED (resource exists via SDK)!");
-      setContractInitialized(true);
-      message.success('✅ Contract is ready and initialized!');
-      setTimeout(fetchMoodData, 500);
-      
-    } catch (error) {
-      addDebug(`Error checking contract: ${error.message}`);
-      
-      // ✅ KEY FIX: E_ALREADY_INITIALIZED means it IS initialized!
-      if (error.message?.includes('E_ALREADY_INITIALIZED') || 
-          error.message?.includes('ALREADY_INITIALIZED') ||
-          error.message?.includes('0x3')) {
-        addDebug("✅ CONTRACT IS INITIALIZED (confirmed by E_ALREADY_INITIALIZED error)!");
-        setContractInitialized(true);
-        message.success('✅ Contract is already initialized and ready to use!');
-        setTimeout(fetchMoodData, 500);
-      } 
-      // ✅ E_MOODMAP_NOT_INITIALIZED means it's NOT initialized
-      else if (error.message?.includes('E_MOODMAP_NOT_INITIALIZED') || 
-               error.message?.includes('MOODMAP_NOT_INITIALIZED') ||
-               error.message?.includes('0x2')) {
-        addDebug("❌ CONTRACT IS NOT INITIALIZED");
-        setContractInitialized(false);
-        message.warning('Contract needs initialization.');
-      } 
-      // ✅ Resource not found also means not initialized
-      else if (error.message?.includes('resource not found') || 
-               error.message?.includes('Resource not found') ||
-               error.message?.includes('404')) {
-        addDebug("❌ CONTRACT RESOURCE NOT FOUND - NOT INITIALIZED");
-        setContractInitialized(false);
-        message.warning('Contract not found - needs initialization.');
-      } else {
-        addDebug("❓ Contract status unclear - will try to detect from operations");
-        // Don't change the state - let other operations determine it
-        message.info('Contract status unclear. Try operations to determine state.');
-      }
-    }
-  };
-
   const fetchMoodData = async () => {
     if (networkStatus !== 'testnet-verified') return;
     
     setLoading(true);
     try {
-      addDebug("🔄 Fetching mood data from TESTNET...");
+      console.log('🔄 Fetching mood data from contract...');
+      
+      // ✅ FIXED: Safer data fetching with better error handling
+      let moodCounts, total;
       
       try {
-        const resource = await aptos.getAccountResource({
-          accountAddress: MODULE_ADDRESS,
-          resourceType: `${MODULE_ADDRESS}::moodmap::MoodMap`
-        });
-        
-        addDebug("✅ MoodMap resource found, fetching data...");
-        setContractInitialized(true);
-        
-        let moodCounts = await aptos.view({
+        moodCounts = await aptos.view({
           function: `${MODULE_ADDRESS}::moodmap::get_mood_counts`,
           type_arguments: [],
           arguments: []
         });
-        
-        let total = await aptos.view({
+        console.log('📊 Raw mood counts from contract:', moodCounts);
+        console.log('📊 Type of mood counts:', typeof moodCounts, Array.isArray(moodCounts));
+      } catch (err) {
+        console.log('❌ Error fetching mood counts:', err.message);
+        throw err;
+      }
+      
+      try {
+        total = await aptos.view({
           function: `${MODULE_ADDRESS}::moodmap::get_total_entries`,
           type_arguments: [],
           arguments: []
         });
+        console.log('📊 Raw total entries from contract:', total);
+        console.log('📊 Type of total:', typeof total, Array.isArray(total));
+      } catch (err) {
+        console.log('❌ Error fetching total entries:', err.message);
+        throw err;
+      }
 
-        setTotalEntries(parseInt(total[0]));
-        const chartData = moodOptions.map((mood, i) => ({
-          name: mood.name,
-          value: parseInt(moodCounts[0][i] || 0),
-          emoji: mood.emoji,
-          color: mood.color
-        })).filter(item => item.value > 0);
-        setMoodData(chartData);
+      // ✅ SAFER PARSING: Handle different data formats
+      let totalEntries = 0;
+      let countsArray = [0, 0, 0, 0, 0]; // Default to all zeros
 
-        if (isWalletReady()) await fetchUserMood();
+      // Parse total entries safely
+      if (total !== undefined && total !== null) {
+        if (Array.isArray(total)) {
+          totalEntries = parseInt(total[0]) || 0;
+        } else {
+          totalEntries = parseInt(total) || 0;
+        }
+      }
 
-      } catch (resourceError) {
-        addDebug("Contract resource not found (needs initialization)");
-        setContractInitialized(false);
-        setTotalEntries(0);
-        setMoodData([]);
+      // Parse mood counts safely
+      if (moodCounts !== undefined && moodCounts !== null) {
+        if (Array.isArray(moodCounts)) {
+          if (Array.isArray(moodCounts[0])) {
+            // Double nested array
+            countsArray = moodCounts[0].map(count => parseInt(count) || 0);
+          } else {
+            // Single array
+            countsArray = moodCounts.map(count => parseInt(count) || 0);
+          }
+        } else {
+          console.warn('⚠️ Unexpected mood counts format:', moodCounts);
+        }
+      }
+      
+      console.log('📊 Parsed total entries:', totalEntries);
+      console.log('📊 Parsed counts array:', countsArray);
+
+      setTotalEntries(totalEntries);
+      
+      const chartData = moodOptions.map((mood, i) => ({
+        name: mood.name,
+        value: countsArray[i] || 0,
+        emoji: mood.emoji,
+        color: mood.color
+      }));
+      
+      console.log('📊 Chart data created:', chartData);
+      setMoodData(chartData);
+
+      if (isWalletReady()) await fetchUserMood();
+
+      // ✅ SUCCESS MESSAGE
+      if (totalEntries > 0) {
+        console.log(`✅ Successfully loaded ${totalEntries} mood entries from contract!`);
       }
 
     } catch (err) {
-      addDebug(`Error fetching mood data: ${err.message}`);
+      console.log(`❌ Error fetching mood data: ${err.message}`);
+      console.log('❌ Full error object:', err);
+      
+      // ✅ If contract not initialized, show helpful message
+      if (err.message?.includes('E_MOODMAP_NOT_INITIALIZED') || 
+          err.message?.includes('resource not found')) {
+        message.info('Contract not initialized yet. Set the first mood to get started!');
+      } else {
+        message.error(`Error loading data: ${err.message}`);
+      }
       setTotalEntries(0);
-      setMoodData([]);
+      setMoodData(moodOptions.map(mood => ({ ...mood, value: 0 })));
     } finally {
       setLoading(false);
     }
@@ -281,112 +226,40 @@ const MoodMapContent = () => {
       const userAddress = getAccountAddress();
       if (!userAddress) return;
 
+      console.log('👤 Fetching user mood for:', userAddress);
+
       const userMoodData = await aptos.view({
         function: `${MODULE_ADDRESS}::moodmap::get_user_mood`,
         type_arguments: [],
         arguments: [userAddress]
       });
 
+      console.log('👤 Raw user mood data:', userMoodData);
+
       if (userMoodData && userMoodData[0] !== undefined) {
-        setUserMood({
+        // ✅ IMPROVED: Handle message as bytes array
+        let message = userMoodData[1];
+        if (Array.isArray(message)) {
+          // Convert bytes array back to string
+          message = new TextDecoder().decode(new Uint8Array(message));
+        }
+        
+        const moodData = {
           mood: parseInt(userMoodData[0]),
-          message: userMoodData[1],
+          message: message,
           timestamp: parseInt(userMoodData[2])
-        });
+        };
+        
+        console.log('👤 Parsed user mood:', moodData);
+        setUserMood(moodData);
       }
     } catch (error) {
-      addDebug(`Error fetching user mood: ${error.message}`);
+      console.log(`❌ Error fetching user mood: ${error.message}`);
       setUserMood(null);
     }
   };
 
-  const initializeContract = async () => {
-    addDebug("🔄 Starting contract initialization...");
-    
-    if (!connected || !account || !signAndSubmitTransaction) {
-      message.warning('Please connect your wallet first!');
-      return;
-    }
-
-    if (!validateWalletNetwork()) {
-      return;
-    }
-
-    if (networkStatus !== 'testnet-verified') {
-      message.error('❌ Testnet connection not verified. Cannot initialize.');
-      return;
-    }
-
-    // ✅ IMPROVED: Check if already initialized first
-    try {
-      addDebug("Checking if contract is already initialized...");
-      const resource = await aptos.getAccountResource({
-        accountAddress: MODULE_ADDRESS,
-        resourceType: `${MODULE_ADDRESS}::moodmap::MoodMap`
-      });
-      
-      addDebug("✅ CONTRACT IS ALREADY INITIALIZED!");
-      message.success('✅ Contract is already initialized!');
-      setContractInitialized(true);
-      setTimeout(fetchMoodData, 1000);
-      return;
-    } catch (resourceError) {
-      // ✅ KEY FIX: Also check for E_ALREADY_INITIALIZED in the error
-      if (resourceError.message?.includes('E_ALREADY_INITIALIZED') || 
-          resourceError.message?.includes('ALREADY_INITIALIZED') ||
-          resourceError.message?.includes('0x3')) {
-        addDebug("✅ CONTRACT IS ALREADY INITIALIZED (from error check)!");
-        message.success('✅ Contract is already initialized!');
-        setContractInitialized(true);
-        setTimeout(fetchMoodData, 1000);
-        return;
-      }
-      addDebug("Contract not initialized, proceeding with initialization...");
-    }
-
-    try {
-      setLoading(true);
-      message.info('Initializing contract on TESTNET...');
-      
-      const transaction = {
-        data: {
-          function: `${MODULE_ADDRESS}::moodmap::initialize`,
-          typeArguments: [],
-          functionArguments: []
-        }
-      };
-
-      addDebug('🚀 Submitting transaction to TESTNET...');
-      const response = await signAndSubmitTransaction(transaction);
-      
-      if (response?.hash) {
-        addDebug('⏳ Waiting for transaction confirmation...');
-        await aptos.waitForTransaction({ transactionHash: response.hash });
-        message.success('✅ Contract initialized on TESTNET! 🎉');
-        setContractInitialized(true);
-        setTimeout(fetchMoodData, 3000);
-      }
-    } catch (error) {
-      addDebug(`❌ Initialization error: ${error.message}`);
-      
-      if (error.message?.includes('E_ALREADY_INITIALIZED') || 
-          error.message?.includes('ALREADY_INITIALIZED') ||
-          error.message?.includes('0x3')) {
-        addDebug("✅ Contract is already initialized!");
-        message.success('✅ Contract is already initialized!');
-        setContractInitialized(true);
-        setTimeout(fetchMoodData, 1000);
-      } else if (error.message?.includes('mainnet') || error.message?.includes('devnet')) {
-        message.error('🚨 WALLET NETWORK MISMATCH! Your wallet is not on TESTNET!');
-      } else {
-        message.error(`Initialization failed: ${error.message}`);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ✅ KEY FIX: Allow mood setting even if contract not initialized
+  // ✅ SIMPLIFIED: Just set mood, no initialization checks
   const setMood = async (moodValue) => {
     if (!connected) {
       message.warning('Please connect your wallet first!');
@@ -400,7 +273,6 @@ const MoodMapContent = () => {
       return;
     }
     
-    addDebug(`Selected mood: ${moodOptions[moodValue].emoji} ${moodOptions[moodValue].name}`);
     setSelectedMoodData({ value: moodValue, name: moodOptions[moodValue].name });
     setShowMoodModal(true);
   };
@@ -424,6 +296,9 @@ const MoodMapContent = () => {
       setLoading(true);
       const messageBytes = Array.from(new TextEncoder().encode(moodMessage));
       
+      console.log('🚀 Submitting mood:', selectedMoodData.name);
+      console.log('📝 Message bytes:', messageBytes);
+      
       const transaction = {
         data: {
           function: `${MODULE_ADDRESS}::moodmap::set_mood`,
@@ -432,52 +307,56 @@ const MoodMapContent = () => {
         }
       };
 
-      addDebug('🚀 Submitting mood to TESTNET...');
       const response = await signAndSubmitTransaction(transaction);
       
       if (response?.hash) {
+        console.log('⏳ Waiting for transaction:', response.hash);
         await aptos.waitForTransaction({ transactionHash: response.hash });
-        message.success(`✅ Mood "${selectedMoodData.name}" set on TESTNET! 🎉`);
-        addDebug(`✅ Mood submitted successfully: ${selectedMoodData.name}`);
+        
+        // ✅ IMPROVED SUCCESS MESSAGE
+        message.success({
+          content: (
+            <div>
+              <div style={{ fontSize: '16px', marginBottom: '4px' }}>
+                🎉 Mood Successfully Submitted!
+              </div>
+              <div style={{ fontSize: '14px' }}>
+                {selectedMoodData.name} mood: "{moodMessage}"
+              </div>
+              <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                Transaction: {response.hash.slice(0, 8)}...
+              </div>
+            </div>
+          ),
+          duration: 5
+        });
+        
         setShowMoodModal(false);
         setMoodMessage('');
         setSelectedMoodData(null);
         
-        // If contract wasn't initialized before, it is now!
-        if (!contractInitialized) {
-          setContractInitialized(true);
-          message.info('🎉 Contract was automatically initialized with your first mood!');
-        }
+        // ✅ IMMEDIATE DATA REFRESH
+        console.log('🔄 Refreshing data after successful submission...');
+        setTimeout(() => {
+          fetchMoodData();
+        }, 1000);
         
-        setTimeout(fetchMoodData, 2000);
+        // ✅ ALSO REFRESH AGAIN AFTER A DELAY TO ENSURE DATA IS UPDATED
+        setTimeout(() => {
+          fetchMoodData();
+        }, 3000);
       }
     } catch (error) {
-      addDebug(`❌ Error setting mood: ${error.message}`);
+      console.log(`❌ Error setting mood: ${error.message}`);
       
-      // ✅ IMPROVED ERROR HANDLING FOR SPECIFIC MOODMAP ERRORS
+      // ✅ SIMPLIFIED ERROR HANDLING
       if (error.message?.includes('E_MOODMAP_NOT_INITIALIZED') || 
           error.message?.includes('MOODMAP_NOT_INITIALIZED') ||
-          error.message?.includes('0x2')) {
+          error.message?.includes('resource not found')) {
         
-        message.error('❌ Contract not initialized! Please initialize first.');
-        setContractInitialized(false);
+        message.error('❌ Contract not initialized! Please run the initialization command first.');
         setShowMoodModal(false);
         
-        // Show initialization prompt
-        Modal.confirm({
-          title: 'Contract Needs Initialization',
-          content: 'The MoodMap contract needs to be initialized before you can submit moods. Would you like to initialize it now?',
-          okText: 'Yes, Initialize Now',
-          cancelText: 'Cancel',
-          onOk: () => {
-            initializeContract();
-          }
-        });
-        
-      } else if (error.message?.includes('E_NOT_INITIALIZED') || 
-                 error.message?.includes('NOT_INITIALIZED')) {
-        message.error('❌ Contract needs to be initialized first. Please initialize the contract.');
-        setContractInitialized(false);
       } else if (error.message?.includes('mainnet') || error.message?.includes('devnet')) {
         message.error('🚨 WALLET NETWORK MISMATCH! Check your wallet network!');
       } else {
@@ -488,21 +367,7 @@ const MoodMapContent = () => {
     }
   };
 
-  // ✅ FORCE CHECK CONTRACT STATUS ON WALLET CONNECTION - More aggressive checking
-  useEffect(() => {
-    if (networkStatus === 'testnet-verified' && connected) {
-      addDebug("🔄 Wallet connected - checking contract status immediately...");
-      // Check immediately and then again after a delay
-      checkContractStatus();
-      setTimeout(() => {
-        if (!contractInitialized) {
-          addDebug("🔄 Rechecking contract status after delay...");
-          checkContractStatus();
-        }
-      }, 3000);
-    }
-  }, [connected, networkStatus]);
-
+  // ✅ SIMPLIFIED: Auto-fetch data when connected
   useEffect(() => {
     if (networkStatus === 'testnet-verified') {
       fetchMoodData();
@@ -543,8 +408,8 @@ const MoodMapContent = () => {
     }
   };
 
-  // ✅ SIMPLIFIED: Show emojis when wallet is connected and testnet is verified
-  const shouldShowEmojis = () => {
+  // ✅ SIMPLIFIED: Show interface when testnet is verified and wallet connected
+  const shouldShowInterface = () => {
     return networkStatus === 'testnet-verified' && connected;
   };
 
@@ -575,17 +440,6 @@ const MoodMapContent = () => {
                 Wallet: {walletNetwork.toUpperCase()}
               </div>
             )}
-            {networkStatus === 'testnet-verified' && (
-              <div style={{ 
-                color: contractInitialized ? '#52c41a' : '#faad14',
-                fontSize: '11px',
-                background: 'rgba(255,255,255,0.1)',
-                padding: '2px 6px',
-                borderRadius: '3px'
-              }}>
-                Contract: {contractInitialized ? 'READY' : 'PENDING'}
-              </div>
-            )}
             <WalletConnector />
           </div>
         </div>
@@ -593,27 +447,7 @@ const MoodMapContent = () => {
 
       <Content style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
         <Row gutter={[24, 24]}>
-          {/* Debug Panel */}
-          {debugInfo.length > 0 && (
-            <Col span={24}>
-              <Card 
-                title="🔍 Debug Information" 
-                size="small"
-                style={{ 
-                  background: 'rgba(0,0,0,0.8)', 
-                  color: '#00ff00',
-                  fontFamily: 'monospace',
-                  fontSize: '12px'
-                }}
-                bodyStyle={{ maxHeight: '150px', overflowY: 'auto' }}
-              >
-                {debugInfo.map((info, idx) => (
-                  <div key={idx} style={{ color: '#00ff00', marginBottom: '2px' }}>{info}</div>
-                ))}
-              </Card>
-            </Col>
-          )}
-
+          
           {/* Mainnet Warning */}
           {connected && walletNetwork === 'mainnet' && (
             <Col span={24}>
@@ -652,89 +486,13 @@ const MoodMapContent = () => {
                 </Col>
               )}
 
-              {/* ✅ ADD MANUAL CONTRACT CHECK BUTTON ALWAYS VISIBLE */}
-              {networkStatus === 'testnet-verified' && connected && (
-                <Col span={24}>
-                  <Card style={{ 
-                    background: 'rgba(255,255,255,0.9)', 
-                    backdropFilter: 'blur(10px)', 
-                    borderRadius: '12px', 
-                    border: 'none',
-                    textAlign: 'center'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                      <div>
-                        <Text strong>Contract Status: </Text>
-                        <Text style={{ 
-                          color: contractInitialized ? '#52c41a' : '#faad14',
-                          fontWeight: 'bold'
-                        }}>
-                          {contractInitialized ? '✅ INITIALIZED' : '⏳ CHECKING...'}
-                        </Text>
-                      </div>
-                      
-                      <Button 
-                        size="small"
-                        onClick={checkContractStatus} 
-                        loading={loading}
-                        type="default"
-                      >
-                        🔄 Force Refresh Status
-                      </Button>
-                    </div>
-                  </Card>
-                </Col>
-              )}
-
-              {/* ✅ SHOW INITIALIZATION INTERFACE ONLY WHEN TRULY NOT INITIALIZED */}
-              {networkStatus === 'testnet-verified' && connected && !contractInitialized && (
-                <Col span={24}>
-                  <Card style={{ 
-                    background: 'rgba(255, 193, 7, 0.1)', 
-                    backdropFilter: 'blur(10px)', 
-                    borderRadius: '16px', 
-                    border: '2px solid #ffc107', 
-                    textAlign: 'center' 
-                  }}>
-                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
-                    <Title level={3} style={{ color: '#f57c00' }}>Contract Needs Initialization</Title>
-                    <Text style={{ fontSize: '16px', marginBottom: '20px', display: 'block' }}>
-                      If you see "E_ALREADY_INITIALIZED" error, your contract is actually ready! 
-                      Try the "Force Refresh Status" button above first.
-                    </Text>
-                    
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                      <Button 
-                        type="primary" 
-                        size="large"
-                        onClick={initializeContract} 
-                        loading={loading}
-                        style={{ 
-                          background: '#1890ff',
-                          borderColor: '#1890ff',
-                          minWidth: '180px' 
-                        }}
-                      >
-                        Try Initialize (if really needed)
-                      </Button>
-                    </div>
-                    
-                    <div style={{ marginTop: '16px', fontSize: '12px', color: '#666' }}>
-                      <Text type="secondary">
-                        💡 If initialization shows "E_ALREADY_INITIALIZED" error, just refresh the status above!
-                      </Text>
-                    </div>
-                  </Card>
-                </Col>
-              )}
-
-              {/* ✅ EMOJI SELECTION - NOW SHOWS WHEN WALLET IS CONNECTED */}
-              {shouldShowEmojis() && (
+              {/* ✅ MAIN INTERFACE - Show when ready */}
+              {shouldShowInterface() && (
                 <>
-                  {/* Stats Row */}
+                  {/* Stats Row with Refresh Button */}
                   <Col span={24}>
                     <Row gutter={[16, 16]}>
-                      <Col xs={24} sm={8}>
+                      <Col xs={24} sm={6}>
                         <Card style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '12px', border: 'none' }}>
                           <Statistic 
                             title="Total Mood Entries" 
@@ -744,17 +502,17 @@ const MoodMapContent = () => {
                           />
                         </Card>
                       </Col>
-                      <Col xs={24} sm={8}>
+                      <Col xs={24} sm={6}>
                         <Card style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '12px', border: 'none' }}>
                           <Statistic 
                             title="Community Moods" 
-                            value={moodData.length} 
+                            value={moodData.filter(m => m.value > 0).length} 
                             prefix={<MehOutlined />}
                             valueStyle={{ color: '#52c41a' }}
                           />
                         </Card>
                       </Col>
-                      <Col xs={24} sm={8}>
+                      <Col xs={24} sm={6}>
                         <Card style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '12px', border: 'none' }}>
                           <Statistic 
                             title="Your Mood Status" 
@@ -764,10 +522,26 @@ const MoodMapContent = () => {
                           />
                         </Card>
                       </Col>
+                      <Col xs={24} sm={6}>
+                        <Card style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '12px', border: 'none', textAlign: 'center' }}>
+                          <Button 
+                            type="primary" 
+                            icon="🔄"
+                            onClick={() => {
+                              console.log('🔄 Manual refresh triggered');
+                              fetchMoodData();
+                            }}
+                            loading={loading}
+                            style={{ width: '100%' }}
+                          >
+                            Refresh Data
+                          </Button>
+                        </Card>
+                      </Col>
                     </Row>
                   </Col>
 
-                  {/* Emoji Selection */}
+                  {/* ✅ SIMPLIFIED EMOJI SELECTION */}
                   <Col span={24}>
                     <Card 
                       title="How are you feeling today?" 
@@ -806,19 +580,19 @@ const MoodMapContent = () => {
                     </Card>
                   </Col>
 
-                  {/* Charts (only show if we have data) */}
-                  {moodData.length > 0 && (
-                    <Col span={24}>
-                      <Row gutter={[24, 24]}>
-                        <Col xs={24} lg={12}>
-                          <Card 
-                            title="Community Mood Distribution" 
-                            style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '16px', border: 'none' }}
-                          >
+                  {/* Charts (show even if empty for debugging) */}
+                  <Col span={24}>
+                    <Row gutter={[24, 24]}>
+                      <Col xs={24} lg={12}>
+                        <Card 
+                          title={`Community Mood Distribution (Total: ${totalEntries})`}
+                          style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '16px', border: 'none' }}
+                        >
+                          {moodData.filter(item => item.value > 0).length > 0 ? (
                             <ResponsiveContainer width="100%" height={300}>
                               <PieChart>
                                 <Pie
-                                  data={moodData}
+                                  data={moodData.filter(item => item.value > 0)}
                                   cx="50%"
                                   cy="50%"
                                   innerRadius={60}
@@ -826,20 +600,29 @@ const MoodMapContent = () => {
                                   dataKey="value"
                                   label={({ name, value, emoji }) => `${emoji} ${name}: ${value}`}
                                 >
-                                  {moodData.map((entry, index) => (
+                                  {moodData.filter(item => item.value > 0).map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={entry.color} />
                                   ))}
                                 </Pie>
                                 <Tooltip content={<CustomTooltip />} />
                               </PieChart>
                             </ResponsiveContainer>
-                          </Card>
-                        </Col>
-                        <Col xs={24} lg={12}>
-                          <Card 
-                            title="Mood Counts" 
-                            style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '16px', border: 'none' }}
-                          >
+                          ) : (
+                            <div style={{ textAlign: 'center', padding: '40px' }}>
+                              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
+                              <Text type="secondary">
+                                {totalEntries === 0 ? 'No moods submitted yet. Be the first!' : 'Loading mood data...'}
+                              </Text>
+                            </div>
+                          )}
+                        </Card>
+                      </Col>
+                      <Col xs={24} lg={12}>
+                        <Card 
+                          title="Mood Counts (All Categories)" 
+                          style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '16px', border: 'none' }}
+                        >
+                          {moodData.some(item => item.value > 0) ? (
                             <ResponsiveContainer width="100%" height={300}>
                               <BarChart data={moodData}>
                                 <CartesianGrid strokeDasharray="3 3" />
@@ -849,11 +632,28 @@ const MoodMapContent = () => {
                                 <Bar dataKey="value" fill="#1890ff" />
                               </BarChart>
                             </ResponsiveContainer>
-                          </Card>
-                        </Col>
-                      </Row>
-                    </Col>
-                  )}
+                          ) : (
+                            <div style={{ textAlign: 'center', padding: '40px' }}>
+                              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📈</div>
+                              <Text type="secondary">
+                                {totalEntries === 0 ? 'No data to display yet.' : 'Loading chart data...'}
+                              </Text>
+                            </div>
+                          )}
+                          
+                          {/* ✅ DEBUG INFO */}
+                          <div style={{ marginTop: '16px', fontSize: '12px', color: '#666' }}>
+                            <div><strong>Debug Info:</strong></div>
+                            {moodData.map((mood, i) => (
+                              <div key={i}>
+                                {mood.emoji} {mood.name}: {mood.value} entries
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      </Col>
+                    </Row>
+                  </Col>
 
                   {/* User's Current Mood */}
                   {userMood && (
