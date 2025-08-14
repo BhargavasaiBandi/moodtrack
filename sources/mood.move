@@ -1,267 +1,138 @@
-module mood_addr::moodmap {
-    use std::signer;
+module 0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9::moodmap {
     use std::vector;
     use std::string::{Self, String};
     use aptos_framework::timestamp;
     use aptos_framework::event;
 
-    // Error codes
-    const E_INVALID_MOOD: u64 = 1;
-    const E_MOODMAP_NOT_INITIALIZED: u64 = 2;
-    const E_ALREADY_INITIALIZED: u64 = 3;
+    // === Errors ===
+    const E_NOT_INITIALIZED: u64 = 1;
+    const E_INVALID_MOOD_VALUE: u64 = 2;
+    const E_NO_MOOD_HISTORY: u64 = 3;
 
-    // Mood values (0-4 for simplicity)
-    const MOOD_TERRIBLE: u8 = 0;
-    const MOOD_SAD: u8 = 1;
-    const MOOD_NEUTRAL: u8 = 2;
-    const MOOD_HAPPY: u8 = 3;
-    const MOOD_ECSTATIC: u8 = 4;
+    // === Structs ===
 
-    // Individual mood entry
-    struct MoodEntry has copy, drop, store {
+    struct MoodEntry has store, drop, copy {
         user: address,
         mood: u8,
-        timestamp: u64,
         message: String,
+        timestamp: u64,
     }
 
-    // Global mood tracker resource - MUST BE STORED AT MODULE ADDRESS
-    struct MoodMap has key {
-        moods: vector<MoodEntry>,
-        mood_count: vector<u64>, // Count for each mood type [terrible, sad, neutral, happy, ecstatic]
+    struct UserMood has key {
+        last_mood: MoodEntry,
+        history: vector<MoodEntry>,
+    }
+
+    struct MoodStats has key {
+        mood_counts: vector<u64>,
         total_entries: u64,
+        unique_users: vector<address>,
     }
 
-    // Events
-    #[event]
-    struct MoodSetEvent has copy, drop, store {
+    // === Events ===
+
+    struct MoodUpdateEvent has drop, store {
         user: address,
         mood: u8,
         message: String,
         timestamp: u64,
     }
 
-    #[event]
-    struct MoodMapInitialized has copy, drop, store {
-        initializer: address,
-        timestamp: u64,
-    }
+    // === Public Functions ===
 
-    // ✅ FIXED: Initialize at module address (anyone can call this)
-    public entry fun initialize(admin: &signer) {
-        let module_addr = @mood_addr;
-        
-        // Only allow initialization at the module address
-        assert!(signer::address_of(admin) == module_addr, E_ALREADY_INITIALIZED);
-        
-        // Check if already initialized
-        assert!(!exists<MoodMap>(module_addr), E_ALREADY_INITIALIZED);
-        
-        // Initialize mood count vector with zeros
-        let mood_count = vector::empty<u64>();
-        vector::push_back(&mut mood_count, 0); // terrible
-        vector::push_back(&mut mood_count, 0); // sad
-        vector::push_back(&mut mood_count, 0); // neutral
-        vector::push_back(&mut mood_count, 0); // happy
-        vector::push_back(&mut mood_count, 0); // ecstatic
-
-        let mood_map = MoodMap {
-            moods: vector::empty<MoodEntry>(),
-            mood_count,
+    public entry fun init_module(sender: &signer) {
+        let sender_addr = signer::address_of(sender);
+        assert!(sender_addr == @0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9, 0); // Only deployer can init
+        move_to(sender, MoodStats {
+            mood_counts: vector[0, 0, 0, 0, 0],
             total_entries: 0,
-        };
-
-        move_to(admin, mood_map);
-
-        // Emit initialization event
-        event::emit(MoodMapInitialized {
-            initializer: signer::address_of(admin),
-            timestamp: timestamp::now_seconds(),
+            unique_users: vector::empty<address>(),
         });
     }
 
-    // ✅ FIXED: Alternative initialization that allows any user to initialize if not done
-    public entry fun initialize_if_not_exists(user: &signer) {
-        let module_addr = @mood_addr;
-        
-        // Only initialize if it doesn't exist
-        if (!exists<MoodMap>(module_addr)) {
-            // This will fail if user is not the module owner, that's expected
-            // In production, you'd want a different approach
-        };
-    }
+    public entry fun set_mood(sender: &signer, mood: u8, message_bytes: vector<u8>) {
+        assert!(exists<MoodStats>(@0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9), E_NOT_INITIALIZED);
+        assert!(mood < 5, E_INVALID_MOOD_VALUE);
 
-    // ✅ FIXED: Set user's mood (works with any user)
-    public entry fun set_mood(
-        user: &signer,
-        mood: u8,
-        message_bytes: vector<u8>
-    ) acquires MoodMap {
-        // Validate mood value
-        assert!(mood <= MOOD_ECSTATIC, E_INVALID_MOOD);
-
-        let user_addr = signer::address_of(user);
+        let user_addr = signer::address_of(sender);
+        let stats = borrow_global_mut<MoodStats>(@0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9);
         let message = string::utf8(message_bytes);
-        let current_time = timestamp::now_seconds();
 
-        // ✅ FIXED: Look for MoodMap at module address
-        let module_addr = @mood_addr;
-        assert!(exists<MoodMap>(module_addr), E_MOODMAP_NOT_INITIALIZED);
-        let mood_map = borrow_global_mut<MoodMap>(module_addr);
-
-        // Create new mood entry
-        let mood_entry = MoodEntry {
+        let new_entry = MoodEntry {
             user: user_addr,
             mood,
-            timestamp: current_time,
-            message,
+            message: copy message,
+            timestamp: timestamp::now_seconds(),
         };
 
-        // Check if user already has a mood entry, update or add
-        let user_mood_index_opt = find_user_mood_index(&mood_map.moods, user_addr);
-        
-        if (vector::length(&user_mood_index_opt) > 0) {
-            // User exists, update their mood
-            let index = *vector::borrow(&user_mood_index_opt, 0);
-            let old_mood_entry = vector::borrow(&mood_map.moods, index);
-            let old_mood = old_mood_entry.mood;
-            
-            // Decrease count for old mood
-            let old_count = vector::borrow_mut(&mut mood_map.mood_count, (old_mood as u64));
-            *old_count = *old_count - 1;
-            
-            // Update the mood entry
-            *vector::borrow_mut(&mut mood_map.moods, index) = mood_entry;
+        // Update or create user's mood history
+        if (exists<UserMood>(user_addr)) {
+            let user_mood = borrow_global_mut<UserMood>(user_addr);
+            let old_mood_value = user_mood.last_mood.mood;
+            stats.mood_counts[old_mood_value] = stats.mood_counts[old_mood_value] - 1;
+            vector::push_back(&mut user_mood.history, user_mood.last_mood);
+            user_mood.last_mood = new_entry;
         } else {
-            // New user, add new entry
-            vector::push_back(&mut mood_map.moods, mood_entry);
-            mood_map.total_entries = mood_map.total_entries + 1;
+            move_to(sender, UserMood {
+                last_mood: new_entry,
+                history: vector::empty<MoodEntry>(),
+            });
+            vector::push_back(&mut stats.unique_users, user_addr);
         };
 
-        // Increase count for new mood
-        let new_count = vector::borrow_mut(&mut mood_map.mood_count, (mood as u64));
-        *new_count = *new_count + 1;
+        // Update stats
+        stats.mood_counts[mood] = stats.mood_counts[mood] + 1;
+        stats.total_entries = stats.total_entries + 1;
 
-        // Emit mood set event
-        event::emit(MoodSetEvent {
+        // Emit event
+        event::emit<MoodUpdateEvent>(MoodUpdateEvent {
             user: user_addr,
             mood,
             message,
-            timestamp: current_time,
+            timestamp: new_entry.timestamp,
         });
     }
 
-    // Helper function to find user's mood index
-    fun find_user_mood_index(moods: &vector<MoodEntry>, user_addr: address): vector<u64> {
-        let result = vector::empty<u64>();
-        let len = vector::length(moods);
-        let i = 0;
-        
+    // === View Functions ===
+
+    #[view]
+    public fun get_mood_counts(): vector<u64> {
+        assert!(exists<MoodStats>(@0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9), E_NOT_INITIALIZED);
+        borrow_global<MoodStats>(@0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9).mood_counts
+    }
+
+    #[view]
+    public fun get_total_entries(): u64 {
+        assert!(exists<MoodStats>(@0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9), E_NOT_INITIALIZED);
+        borrow_global<MoodStats>(@0x2f1c1fd6bfee09912c4f59306c98f3a23dfd555cb637c5c297a86b9e9c78ebe9).total_entries
+    }
+
+    #[view]
+    public fun get_user_mood(user: address): (u8, vector<u8>, u64) {
+        assert!(exists<UserMood>(user), E_NO_MOOD_HISTORY);
+        let user_mood = borrow_global<UserMood>(user);
+        let last_mood = user_mood.last_mood;
+        (last_mood.mood, string::bytes(&last_mood.message), last_mood.timestamp)
+    }
+
+    #[view]
+    public fun get_user_mood_history(user: address): vector<(u8, vector<u8>, u64)> {
+        assert!(exists<UserMood>(user), E_NO_MOOD_HISTORY);
+        let user_mood = borrow_global<UserMood>(user);
+        let history = &user_mood.history;
+        let len = vector::length(history);
+        let mut result = vector::empty<(u8, vector<u8>, u64)>();
+
+        // Add last_mood first
+        let last_mood = &user_mood.last_mood;
+        vector::push_back(&mut result, (last_mood.mood, string::bytes(&last_mood.message), last_mood.timestamp));
+
+        let mut i = 0;
         while (i < len) {
-            let mood_entry = vector::borrow(moods, i);
-            if (mood_entry.user == user_addr) {
-                vector::push_back(&mut result, i);
-                break
-            };
+            let entry = vector::borrow(history, i);
+            vector::push_back(&mut result, (entry.mood, string::bytes(&entry.message), entry.timestamp));
             i = i + 1;
         };
-        
         result
-    }
-
-    // ✅ FIXED: View functions now look at module address
-
-    #[view]
-    public fun get_mood_counts(): vector<u64> acquires MoodMap {
-        let module_addr = @mood_addr;
-        assert!(exists<MoodMap>(module_addr), E_MOODMAP_NOT_INITIALIZED);
-        let mood_map = borrow_global<MoodMap>(module_addr);
-        mood_map.mood_count
-    }
-
-    #[view]
-    public fun get_total_entries(): u64 acquires MoodMap {
-        let module_addr = @mood_addr;
-        assert!(exists<MoodMap>(module_addr), E_MOODMAP_NOT_INITIALIZED);
-        let mood_map = borrow_global<MoodMap>(module_addr);
-        mood_map.total_entries
-    }
-
-    #[view]
-    public fun get_user_mood(user_addr: address): (u8, vector<u8>, u64) acquires MoodMap {
-        let module_addr = @mood_addr;
-        assert!(exists<MoodMap>(module_addr), E_MOODMAP_NOT_INITIALIZED);
-        let mood_map = borrow_global<MoodMap>(module_addr);
-        
-        let user_mood_index_opt = find_user_mood_index(&mood_map.moods, user_addr);
-        if (vector::length(&user_mood_index_opt) > 0) {
-            let index = *vector::borrow(&user_mood_index_opt, 0);
-            let mood_entry = vector::borrow(&mood_map.moods, index);
-            // ✅ FIXED: Return message as bytes to match your JS expectation
-            (mood_entry.mood, *string::bytes(&mood_entry.message), mood_entry.timestamp)
-        } else {
-            // Return default values if user hasn't set mood
-            (MOOD_NEUTRAL, b"No mood set", 0)
-        }
-    }
-
-    #[view]
-    public fun get_recent_moods(limit: u64): vector<MoodEntry> acquires MoodMap {
-        let module_addr = @mood_addr;
-        assert!(exists<MoodMap>(module_addr), E_MOODMAP_NOT_INITIALIZED);
-        let mood_map = borrow_global<MoodMap>(module_addr);
-        
-        let result = vector::empty<MoodEntry>();
-        let len = vector::length(&mood_map.moods);
-        let start_index = if (len > limit) { len - limit } else { 0 };
-        
-        let i = start_index;
-        while (i < len) {
-            let mood_entry = *vector::borrow(&mood_map.moods, i);
-            vector::push_back(&mut result, mood_entry);
-            i = i + 1;
-        };
-        
-        result
-    }
-
-    #[view]
-    public fun is_initialized(): bool {
-        let module_addr = @mood_addr;
-        exists<MoodMap>(module_addr)
-    }
-
-    #[view]
-    public fun get_mood_percentage(mood: u8): u64 acquires MoodMap {
-        assert!(mood <= MOOD_ECSTATIC, E_INVALID_MOOD);
-        let module_addr = @mood_addr;
-        assert!(exists<MoodMap>(module_addr), E_MOODMAP_NOT_INITIALIZED);
-        
-        let mood_map = borrow_global<MoodMap>(module_addr);
-        
-        if (mood_map.total_entries == 0) {
-            return 0
-        };
-        
-        let mood_count = *vector::borrow(&mood_map.mood_count, (mood as u64));
-        (mood_count * 100) / mood_map.total_entries
-    }
-
-    // Utility function to get mood name as string
-    #[view]
-    public fun get_mood_name(mood: u8): String {
-        if (mood == MOOD_TERRIBLE) {
-            string::utf8(b"Terrible")
-        } else if (mood == MOOD_SAD) {
-            string::utf8(b"Sad")
-        } else if (mood == MOOD_NEUTRAL) {
-            string::utf8(b"Neutral")
-        } else if (mood == MOOD_HAPPY) {
-            string::utf8(b"Happy")
-        } else if (mood == MOOD_ECSTATIC) {
-            string::utf8(b"Ecstatic")
-        } else {
-            string::utf8(b"Unknown")
-        }
     }
 }

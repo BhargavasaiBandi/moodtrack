@@ -1,11 +1,12 @@
 // src/WalletProvider.js
 import React from 'react';
 import { AptosWalletAdapterProvider } from '@aptos-labs/wallet-adapter-react';
+import { PetraWallet } from 'petra-plugin-wallet-adapter';
 import { Button } from 'antd';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 
-// Empty wallets array - will auto-detect installed wallet extensions
-const wallets = [];
+// Instantiate the Petra wallet
+const wallets = [new PetraWallet()];
 
 // Wallet Provider Component
 export const AppWalletProvider = ({ children }) => {

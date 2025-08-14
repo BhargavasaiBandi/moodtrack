@@ -1,6 +1,6 @@
 // src/App.js - SIMPLIFIED VERSION - No Manual Initialization
 import React, { useState, useEffect } from 'react';
-import { Layout, Card, Button, message, Row, Col, Typography, Statistic, Input, Modal, Alert } from 'antd';
+import { Layout, Card, Button, message, Row, Col, Typography, Statistic, Input, Modal, Alert, Spin } from 'antd';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SmileOutlined, FrownOutlined, MehOutlined, WalletOutlined } from '@ant-design/icons';
 import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk';
@@ -35,6 +35,7 @@ const MoodMapContent = () => {
   const [selectedMoodData, setSelectedMoodData] = useState(null);
   const [networkStatus, setNetworkStatus] = useState('checking');
   const [walletNetwork, setWalletNetwork] = useState('unknown');
+  const [isFetchingStats, setIsFetchingStats] = useState(false);
 
   const moodOptions = [
     { value: 0, name: 'Terrible', emoji: '😰', color: '#ff4d4f' },
@@ -118,6 +119,7 @@ const MoodMapContent = () => {
   const fetchMoodData = async () => {
     if (networkStatus !== 'testnet-verified') return;
     
+    setIsFetchingStats(true);
     setLoading(true);
     try {
       console.log('🔄 Fetching mood data from contract...');
@@ -127,9 +129,11 @@ const MoodMapContent = () => {
       
       try {
         moodCounts = await aptos.view({
-          function: `${MODULE_ADDRESS}::moodmap::get_mood_counts`,
-          type_arguments: [],
-          arguments: []
+          payload: {
+            function: `${MODULE_ADDRESS}::moodmap::get_mood_counts`,
+            type_arguments: [],
+            arguments: []
+          }
         });
         console.log('📊 Raw mood counts from contract:', moodCounts);
         console.log('📊 Type of mood counts:', typeof moodCounts, Array.isArray(moodCounts));
@@ -140,9 +144,11 @@ const MoodMapContent = () => {
       
       try {
         total = await aptos.view({
-          function: `${MODULE_ADDRESS}::moodmap::get_total_entries`,
-          type_arguments: [],
-          arguments: []
+          payload: {
+            function: `${MODULE_ADDRESS}::moodmap::get_total_entries`,
+            type_arguments: [],
+            arguments: []
+          }
         });
         console.log('📊 Raw total entries from contract:', total);
         console.log('📊 Type of total:', typeof total, Array.isArray(total));
@@ -216,6 +222,7 @@ const MoodMapContent = () => {
       setMoodData(moodOptions.map(mood => ({ ...mood, value: 0 })));
     } finally {
       setLoading(false);
+      setIsFetchingStats(false);
     }
   };
 
@@ -229,9 +236,11 @@ const MoodMapContent = () => {
       console.log('👤 Fetching user mood for:', userAddress);
 
       const userMoodData = await aptos.view({
-        function: `${MODULE_ADDRESS}::moodmap::get_user_mood`,
-        type_arguments: [],
-        arguments: [userAddress]
+        payload: {
+          function: `${MODULE_ADDRESS}::moodmap::get_user_mood`,
+          type_arguments: [],
+          arguments: [userAddress]
+        }
       });
 
       console.log('👤 Raw user mood data:', userMoodData);
@@ -307,7 +316,9 @@ const MoodMapContent = () => {
         }
       };
 
+      console.log('Submitting transaction:', transaction);
       const response = await signAndSubmitTransaction(transaction);
+      console.log('Transaction response:', response);
       
       if (response?.hash) {
         console.log('⏳ Waiting for transaction:', response.hash);
@@ -347,6 +358,7 @@ const MoodMapContent = () => {
         }, 3000);
       }
     } catch (error) {
+      console.error('Full error object in submitMood:', error);
       console.log(`❌ Error setting mood: ${error.message}`);
       
       // ✅ SIMPLIFIED ERROR HANDLING
@@ -496,6 +508,7 @@ const MoodMapContent = () => {
                         <Card style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '12px', border: 'none' }}>
                           <Statistic 
                             title="Total Mood Entries" 
+                            loading={isFetchingStats}
                             value={totalEntries} 
                             prefix={<SmileOutlined />}
                             valueStyle={{ color: '#1890ff' }}
@@ -506,6 +519,7 @@ const MoodMapContent = () => {
                         <Card style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '12px', border: 'none' }}>
                           <Statistic 
                             title="Community Moods" 
+                            loading={isFetchingStats}
                             value={moodData.filter(m => m.value > 0).length} 
                             prefix={<MehOutlined />}
                             valueStyle={{ color: '#52c41a' }}
@@ -516,6 +530,7 @@ const MoodMapContent = () => {
                         <Card style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '12px', border: 'none' }}>
                           <Statistic 
                             title="Your Mood Status" 
+                            loading={isFetchingStats}
                             value={userMood ? moodOptions[userMood.mood]?.name : 'Not Set'} 
                             prefix={userMood ? moodOptions[userMood.mood]?.emoji : '❓'}
                             valueStyle={{ color: userMood ? moodOptions[userMood.mood]?.color : '#999' }}
